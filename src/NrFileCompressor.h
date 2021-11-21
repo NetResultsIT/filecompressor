@@ -48,13 +48,14 @@ private:
 
 public:
     NrFileCompressor();
-    static int fileCompress(const QString &filename, NrFileCompressor::compressedFileFormatEnum algo, int lev=6); //Default compression level
+    static int fileCompress(const QString &filename, const QString &filepath, NrFileCompressor::compressedFileFormatEnum algo, int lev=6); //Default compression level
+    static int fileCompress(const QString &filename, const QString &srcpath, const QString &dstpath, NrFileCompressor::compressedFileFormatEnum algo, int lev=6); //Default compression level
     static QString getCompressedFilename(const QString &filename, NrFileCompressor::compressedFileFormatEnum algo);
 
-    static int compressZipFile(const QString &filename, int level);
+    static int compressZipFile(const QString &filename, const QString &srcpath, const QString &dstpath, int level);
     static int uncompressZipFile(const QString &filename, const QString &destDir);
 
-    static int compressGzipFile(const QString &filename, int level);
+    static int compressGzipFile(const QString &filename, const QString &srcpath, const QString &dstpath, int level);
 
 };
 

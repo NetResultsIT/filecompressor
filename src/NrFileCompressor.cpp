@@ -7,10 +7,10 @@
 #include "NrFileCompressor.h"
 #include "miniz.h"
 
-#include <QDebug>
 #include <QFile>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QDir>
 
 #include <iostream>
 
@@ -39,18 +39,33 @@ NrFileCompressor::NrFileCompressor()
 
 
 /*!
- * \brief NrFileCompressor::fileCompress the basic function to be called to compress a file
- * \param i_fileName the full path of the file to be compresses
+ * \brief NrFileCompressor::fileCompress the basic function to be called to compress a file (zip file will be created in current working dir)
+ * \param i_fileName the filename (without path) of the file to be compressed
+ * \param i_srcpath the path where the file to be compressed is located
  * \param i_algo the type of compression to be used, either GZIP or ZIP
  * \param i_level the compression level (0=none(faster) .. 9=max (slower))
  * \return 0 if successful, a negative error code otherwise
  */
-int NrFileCompressor::fileCompress(QString const& i_fileName, NrFileCompressor::compressedFileFormatEnum i_algo, int i_lev)
+int NrFileCompressor::fileCompress(QString const& i_fileName, const QString &i_srcpath, NrFileCompressor::compressedFileFormatEnum i_algo, int i_lev)
+{
+    return fileCompress(i_fileName, i_srcpath, QDir::currentPath(), i_algo, i_lev);
+}
+
+/*!
+ * \brief NrFileCompressor::fileCompress the basic function to be called to compress a file
+ * \param i_fileName the filename (without path) of the file to be compressed
+ * \param i_srcpath the path where the file to be compressed is located
+ * \param i_dstpath the path where the compressed file should be created (it must exists and be writable)
+ * \param i_algo the type of compression to be used, either GZIP or ZIP
+ * \param i_level the compression level (0=none(faster) .. 9=max (slower))
+ * \return 0 if successful, a negative error code otherwise
+ */
+int NrFileCompressor::fileCompress(QString const& i_fileName, const QString &i_srcpath, const QString &i_dstpath, NrFileCompressor::compressedFileFormatEnum i_algo, int i_lev)
 {
     if (i_algo == NrFileCompressor::GZIP_ARCHIVE) {
-        return compressGzipFile(i_fileName, i_lev);
+        return compressGzipFile(i_fileName, i_srcpath, i_dstpath, i_lev);
     } else {
-        return compressZipFile(i_fileName, i_lev);
+        return compressZipFile(i_fileName, i_srcpath, i_dstpath, i_lev);
     }
 }
 
@@ -63,6 +78,16 @@ QString calculateNameCompliantWithZipAlgoMiniZ(const QString &filename)
     s.replace("/", "_");
     s.replace(":", "_");
     return s;
+}
+
+QString calculateFilenameWithPath(const QString &i_dstPath, const QString & filename)
+{
+    QString destfileWithpath = QDir::fromNativeSeparators(i_dstPath);
+    if (!destfileWithpath.endsWith("/")) {
+        destfileWithpath.append("/");
+    }
+    destfileWithpath.append(filename);
+    return destfileWithpath;
 }
 
 
@@ -91,17 +116,27 @@ NrFileCompressor::getCompressedFilename(const QString &i_fileName, NrFileCompres
 
 /*!
  * \brief NrFileCompressor::compressZipFile
- * \param filename the file to be compressed
+ * \param i_filename the filename (without path) of the file to be compressed
+ * \param i_srcpath the path where the file to be compressed is located
+ * \param i_dstpath the path where the compressed file should be created (it must exists and be writable)
  * \param level the level of compression to be used while compressing the ZIP file (0=storing, 6=default, 9=maximum)
  * \return a integer return code, 0 meaning the process was successfull
  * \warning the filename \em cannot contain characters '\', '/' or ':' if it does they will be replaced by "_"
  */
-int NrFileCompressor::compressZipFile(const QString &filename, int level)
+int NrFileCompressor::compressZipFile(const QString &i_filename, const QString &i_srcpath, const QString &i_dstpath, int level)
 {
-    std::cout << "Compressing (ZIP) file " << filename.toStdString() << std::endl;
+    std::cout << "Compressing (ZIP) file " << i_filename.toStdString() << std::endl;
     const char *s_pComment = "Zipped with NrFileCompressor! Invalid chars replaced with _";
 
-    QString destfilename = getCompressedFilename(filename, NrFileCompressor::ZIP_ARCHIVE);
+    QString compressedfilename = getCompressedFilename(i_filename, NrFileCompressor::ZIP_ARCHIVE);
+
+    QString destfilename = calculateFilenameWithPath(i_dstpath, compressedfilename);
+    QString srcfilename = calculateFilenameWithPath(i_srcpath, i_filename);
+
+    if (!QFile::exists(srcfilename)) {
+        std::cerr << "Cannot find file to compress: " << srcfilename.toStdString() << std::endl;
+        return NrFileCompressor::E_FILE_NOT_OPEN;
+    }
 
     mz_zip_archive zip_archive;
 
@@ -119,12 +154,13 @@ int NrFileCompressor::compressZipFile(const QString &filename, int level)
 
     // add "filename" file to the archive with a (possibly) modified name "destfilename" (the one that it will be unzipped with)
     // as the original might have some invalid characters in it: '/', '\' or ':'
-    res = mz_zip_writer_add_file(&zip_archive, destfilename.toLatin1().constData(),
-                                  filename.toLatin1().constData(),
+    res = mz_zip_writer_add_file(&zip_archive, compressedfilename.toLatin1().constData(),
+                                  i_filename.toLatin1().constData(),
                                   s_pComment, (quint16)strlen(s_pComment), level);
     if (!res)
     {
-        std::cerr << "Error while adding a zip file to zip archive: " << mz_zip_get_error_string(mz_zip_get_last_error(&zip_archive)) << std::endl;
+        std::cerr << "Error while adding a zip file (" << i_filename.toStdString() << ") to zip archive: "
+                  << mz_zip_get_error_string(mz_zip_get_last_error(&zip_archive)) << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -292,11 +328,29 @@ int NrFileCompressor::writeGzipFooter(QFile *pFile, quint32 i_crc32, quint32 i_s
     return 0;
 }
 
-int NrFileCompressor::compressGzipFile(const QString &filename, int level)
+
+/*!
+ * \brief NrFileCompressor::compressGzipFile
+ * \param i_filename the filename (without path) of the file to be compressed
+ * \param i_srcpath the path where the file to be compressed is located
+ * \param i_dstpath the path where the compressed file should be created (it must exists and be writable)
+ * \param level the level of compression to be used while compressing the GZIP file (0=storing, 6=default, 9=maximum)
+ * \return a integer return code, 0 meaning the process was successfull
+ */
+int NrFileCompressor::compressGzipFile(const QString &i_filename, const QString &i_srcpath, const QString &i_dstpath, int level)
 {
-    qDebug() << "Compressing (GZIP) file " << filename;
+    std::cout << "Compressing (GZIP) file " << i_filename.toStdString() << std::endl;
     //int level = Z_BEST_COMPRESSION;
     z_stream stream;
+
+    QString compressedfilename = getCompressedFilename(i_filename, NrFileCompressor::GZIP_ARCHIVE);
+    QString destfilename = calculateFilenameWithPath(i_dstpath, compressedfilename);
+    QString srcfilename = calculateFilenameWithPath(i_srcpath, i_filename);
+
+    if (!QFile::exists(srcfilename)) {
+        std::cerr << "Cannot find file to compress: " << srcfilename.toStdString() << std::endl;
+        return NrFileCompressor::E_FILE_NOT_OPEN;
+    }
 
     const qint64 BUF_SIZE = (1024 * 1024);
     quint8 s_inbuf[BUF_SIZE];
@@ -309,8 +363,8 @@ int NrFileCompressor::compressGzipFile(const QString &filename, int level)
     stream.next_out = s_outbuf;
     stream.avail_out = BUF_SIZE;
 
-    QFile fin(filename);
-    QFile fout(filename + GZIP_EXT);
+    QFile fin(srcfilename);
+    QFile fout(destfilename);
 
     bool b = true;
     b &= fin.open(QIODevice::ReadOnly);
