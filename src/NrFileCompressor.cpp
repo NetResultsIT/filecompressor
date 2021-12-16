@@ -155,7 +155,7 @@ int NrFileCompressor::compressZipFile(const QString &i_filename, const QString &
     // add "filename" file to the archive with a (possibly) modified name "destfilename" (the one that it will be unzipped with)
     // as the original might have some invalid characters in it: '/', '\' or ':'
     res = mz_zip_writer_add_file(&zip_archive, compressedfilename.toLatin1().constData(),
-                                  i_filename.toLatin1().constData(),
+                                  srcfilename.toLatin1().constData(),
                                   s_pComment, (quint16)strlen(s_pComment), level);
     if (!res)
     {
