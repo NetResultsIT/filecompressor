@@ -171,6 +171,12 @@ int NrFileCompressor::compressZipFile(const QString &i_filename, const QString &
         return EXIT_FAILURE;
     }
 
+    res = mz_zip_writer_end(&zip_archive);
+    if (!res)
+    {
+        std::cerr << "Error while closing zip archive: " << mz_zip_get_error_string(mz_zip_get_last_error(&zip_archive)) << std::endl;
+        return EXIT_FAILURE;
+    }
 
     return 0;
 }
