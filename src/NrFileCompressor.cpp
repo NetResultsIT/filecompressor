@@ -359,14 +359,29 @@ int NrFileCompressor::compressGzipFile(const QString &i_filename, const QString 
     }
 
     const qint64 BUF_SIZE = (1024 * 1024);
-    quint8 s_inbuf[BUF_SIZE];
-    quint8 s_outbuf[BUF_SIZE];
+
+    ///////////////////////////////////////////////////////////////////
+    ///
+    /// We need to create those buffers in the heap, cause in Visual
+    /// Studio the stack memory is limited to 1MB and the following
+    /// instructions:
+    /// quint8 s_inbuf[BUF_SIZE];
+    /// quint8 s_outbuf[BUF_SIZE];
+    /// make the gzip compression crash at runtime
+
+    std::unique_ptr<unsigned char[]> s_inbuf(new unsigned char [BUF_SIZE]);
+    std::unique_ptr<unsigned char[]> s_outbuf(new unsigned char [BUF_SIZE]);
+
+    ///
+    ///
+    ///
+    ///////////////////////////////////////////////////////////////////
 
     // Init the z_stream
     memset(&stream, 0, sizeof(stream));
-    stream.next_in = s_inbuf;
+    stream.next_in = s_inbuf.get();
     stream.avail_in = 0;
-    stream.next_out = s_outbuf;
+    stream.next_out = s_outbuf.get();
     stream.avail_out = BUF_SIZE;
 
     QFile fin(srcfilename);
@@ -409,16 +424,16 @@ int NrFileCompressor::compressGzipFile(const QString &i_filename, const QString 
           // Input buffer is empty, so read more bytes from input file.
           uint n = qMin((qint64)BUF_SIZE, infile_remaining);
 
-          if (fin.read((char*)s_inbuf, n) != n)
+          if (fin.read((char*)s_inbuf.get(), n) != n)
           {
             std::cerr << "Failed reading from input file!" << std::endl;
             return NrFileCompressor::E_MINIZ_ERROR;
           }
 
           //update the crc
-          crc = mz_crc32(crc, s_inbuf, n);
+          crc = mz_crc32(crc, s_inbuf.get(), n);
 
-          stream.next_in = s_inbuf;
+          stream.next_in = s_inbuf.get();
           stream.avail_in = n;
 
           infile_remaining -= n;
@@ -431,12 +446,12 @@ int NrFileCompressor::compressGzipFile(const QString &i_filename, const QString 
         {
           // Output buffer is full, or compression is done, so write buffer to output file.
           uint n = BUF_SIZE - stream.avail_out;
-          if (fout.write((char*)s_outbuf, n) != n)
+          if (fout.write((char*)s_outbuf.get(), n) != n)
           {
             std::cerr << "Failed writing to output file!" << std::endl;
             return NrFileCompressor::E_MINIZ_ERROR;
           }
-          stream.next_out = s_outbuf;
+          stream.next_out = s_outbuf.get();
           stream.avail_out = BUF_SIZE;
         }
 
