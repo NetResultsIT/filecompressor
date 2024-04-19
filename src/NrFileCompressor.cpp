@@ -13,7 +13,11 @@
 #include <QDir>
 
 #include <iostream>
-#include <memory>
+
+#if (_MSC_VER == 1900) //vs 2015
+    #include <memory>
+#endif
+
 
 #if defined(__GNUC__)
   // Ensure we get the 64-bit variants of the CRT's file I/O calls
