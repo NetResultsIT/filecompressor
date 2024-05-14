@@ -18,6 +18,10 @@
     #include <memory>
 #endif
 
+#ifdef Q_OS_LINUX
+ #include <memory>
+#endif
+
 
 #if defined(__GNUC__)
   // Ensure we get the 64-bit variants of the CRT's file I/O calls
